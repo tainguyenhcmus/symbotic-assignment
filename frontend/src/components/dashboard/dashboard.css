@@ -1,0 +1,260 @@
+@keyframes skeletonFade {
+  from { opacity: 0.6; }
+  to { opacity: 1; }
+}
+
+@keyframes cardEnter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes statusPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.55); }
+  50% { box-shadow: 0 0 0 6px rgba(82, 196, 26, 0); }
+}
+
+@keyframes alertGlow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 77, 79, 0.35); }
+  50% { box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.2); }
+}
+
+@keyframes progressShine {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(1.25); }
+  100% { filter: brightness(1); }
+}
+
+@keyframes robotIdle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes robotCharge {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(24, 144, 255, 0)); }
+  50% { filter: drop-shadow(0 0 6px rgba(24, 144, 255, 0.45)); }
+}
+
+@keyframes antennaPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@keyframes antennaBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+@keyframes eyeBlink {
+  0%, 46%, 54%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.15); }
+}
+
+.robot-card-shell {
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  animation: cardEnter 0.4s ease-out both;
+  height: 100%;
+}
+
+.robot-card-shell:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-color: #d6e4ff;
+}
+
+.robot-card-offline {
+  opacity: 0.72;
+  background: #fafafa;
+}
+
+.robot-card-alert {
+  animation: cardEnter 0.4s ease-out both, alertGlow 2s ease-in-out infinite;
+  border-color: #ffccc7;
+}
+
+.robot-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  gap: 8px;
+}
+
+.robot-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.robot-avatar {
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: linear-gradient(160deg, #f0f5ff 0%, #fafafa 100%);
+  border: 1px solid #f0f0f0;
+}
+
+.robot-avatar-offline {
+  filter: grayscale(0.55);
+  background: #f5f5f5;
+}
+
+.robot-avatar-online svg {
+  animation: robotIdle 2.8s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
+
+.robot-avatar-charging svg {
+  animation: robotIdle 2.8s ease-in-out infinite, robotCharge 1.4s ease-in-out infinite;
+}
+
+.robot-avatar-low .robot-antenna-tip {
+  animation: antennaBlink 0.9s ease-in-out infinite;
+}
+
+.robot-avatar-online .robot-eye {
+  animation: eyeBlink 4s ease-in-out infinite;
+}
+
+.robot-avatar-online .robot-antenna-tip {
+  animation: antennaPulse 2s ease-in-out infinite;
+}
+
+.robot-card-shell:hover .robot-avatar-online svg {
+  animation: robotIdle 1.2s ease-in-out infinite;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+}
+
+.robot-card-offline .status-pill {
+  background: #fff2f0;
+  border-color: #ffccc7;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot-online {
+  background: #52c41a;
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+.status-dot-offline {
+  background: #ff4d4f;
+}
+
+.metric-cell {
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-top: 2px solid #d9d9d9;
+  border-radius: 8px;
+  padding: 10px;
+  min-height: 88px;
+  transition: background 0.2s ease;
+}
+
+.robot-card-shell:hover .metric-cell {
+  background: #fff;
+}
+
+.metric-cell-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-bottom: 6px;
+}
+
+.metric-cell-body {
+  min-height: 44px;
+}
+
+.metric-value-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.metric-value {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #262626;
+}
+
+.metric-unit {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8c8c8c;
+  margin-left: 2px;
+}
+
+.charging-tag {
+  margin: 0;
+  font-size: 11px;
+  line-height: 18px;
+  animation: progressShine 1.6s ease-in-out infinite;
+}
+
+.progress-pulse .ant-progress-bg {
+  animation: progressShine 1.4s ease-in-out infinite;
+}
+
+.wifi-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 22px;
+}
+
+.wifi-bar {
+  width: 4px;
+  border-radius: 2px;
+  transition: background 0.3s ease, height 0.3s ease;
+}
+
+.wifi-bar-on {
+  animation: progressShine 2s ease-in-out infinite;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
+}
+
+.filter-bar .ant-segmented {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}

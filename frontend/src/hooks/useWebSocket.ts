@@ -16,43 +16,40 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
 
   const connect = () => {
-    try {
-      // TODO: Implement WebSocket connection logic
-      ws.current = new WebSocket(url)
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+    }
 
-      ws.current.onopen = () => {
-        console.log('✅ WebSocket connected to:', url)
-        setIsConnected(true)
+    const socket = new WebSocket(url)
+    ws.current = socket
 
-        // Clear any existing reconnect timeout
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current)
-        }
-      }
+    socket.onopen = () => {
+      // Ignore if this socket has been replaced (React StrictMode double-mount)
+      if (ws.current !== socket) return
+      console.log('✅ WebSocket connected to:', url)
+      setIsConnected(true)
+    }
 
-      ws.current.onmessage = (event) => {
-        // TODO: Handle incoming messages
-        setLastMessage(event.data)
-      }
+    socket.onmessage = (event) => {
+      if (ws.current !== socket) return
+      setLastMessage(event.data)
+    }
 
-      ws.current.onclose = (event) => {
-        console.log('❌ WebSocket disconnected:', event.code, event.reason)
-        setIsConnected(false)
-
-        // TODO: Implement auto-reconnection logic
-        reconnectTimeoutRef.current = setTimeout(() => {
+    socket.onclose = (event) => {
+      if (ws.current !== socket) return
+      console.log('❌ WebSocket disconnected:', event.code, event.reason)
+      setIsConnected(false)
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (ws.current === socket) {
           console.log('🔄 Attempting to reconnect...')
           connect()
-        }, 3000)
-      }
+        }
+      }, 3000)
+    }
 
-      ws.current.onerror = (error) => {
-        console.error('🚨 WebSocket error:', error)
-        setIsConnected(false)
-      }
-
-    } catch (error) {
-      console.error('Failed to connect WebSocket:', error)
+    socket.onerror = () => {
+      // Silently ignore errors from replaced sockets (StrictMode cleanup)
+      if (ws.current !== socket) return
       setIsConnected(false)
     }
   }
@@ -75,15 +72,16 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   useEffect(() => {
     connect()
 
-    // Cleanup on unmount
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
       if (ws.current) {
         ws.current.close()
+        ws.current = null
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url])
 
   return {
