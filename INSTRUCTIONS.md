@@ -38,7 +38,7 @@ cd frontend && npm install
 
 ### Robot Data Format
 
-Each robot sends telemetry data every second in this format:
+Each robot sends telemetry data every 3 seconds in this format:
 
 ```javascript
 {

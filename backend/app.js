@@ -32,207 +32,212 @@ function sendJson(res, status, data) {
   });
 }
 
+function broadcast(type, payload) {
+  app.publish(DASHBOARD_TOPIC, JSON.stringify({ type, ...payload }));
+}
+
 const app = App({
   maxCompressedSize: 64 * 1024,
   maxBackpressure: 64 * 1024,
-})
+});
 
-  // ── Robot simulator connections ──────────────────────────────────────────
-  .ws('/robots', {
-    upgrade: (res, req, context) => {
-      const upgradeAborted = { aborted: false };
-      const secWebSocketKey = req.getHeader('sec-websocket-key');
-      const secWebSocketProtocol = req.getHeader('sec-websocket-protocol');
-      const secWebSocketExtensions = req.getHeader('sec-websocket-extensions');
-      const query = qs.parse(req.getQuery()) || {};
+// ── Robot simulator connections ──────────────────────────────────────────
+app.ws('/robots', {
+  upgrade: (res, req, context) => {
+    const upgradeAborted = { aborted: false };
+    const secWebSocketKey = req.getHeader('sec-websocket-key');
+    const secWebSocketProtocol = req.getHeader('sec-websocket-protocol');
+    const secWebSocketExtensions = req.getHeader('sec-websocket-extensions');
+    const query = qs.parse(req.getQuery()) || {};
 
-      setTimeout(() => {
-        if (upgradeAborted.aborted) return;
-        res.cork(() => {
-          res.upgrade(
-            { robotId: query.robotId },
-            secWebSocketKey,
-            secWebSocketProtocol,
-            secWebSocketExtensions,
-            context
-          );
-        });
-      }, 300);
+    setTimeout(() => {
+      if (upgradeAborted.aborted) return;
+      res.cork(() => {
+        res.upgrade(
+          { robotId: query.robotId },
+          secWebSocketKey,
+          secWebSocketProtocol,
+          secWebSocketExtensions,
+          context
+        );
+      });
+    }, 300);
 
-      res.onAborted(() => { upgradeAborted.aborted = true; });
-    },
+    res.onAborted(() => { upgradeAborted.aborted = true; });
+  },
 
-    open: (ws) => {
+  open: (ws) => {
+    const { robotId } = ws;
+    console.log(`🤖 Robot ${robotId} connected`);
+    const existing = robotStates.get(robotId) || {};
+    robotStates.set(robotId, { ...existing, robotId, status: 'online', lastSeen: new Date().toISOString() });
+    broadcast('robot_connected', { robotId });
+  },
+
+  // Keep handler sync — uWS forbids relying on ws.* after await
+  message: (ws, message) => {
+    try {
+      const data = JSON.parse(Buffer.from(message).toString());
       const { robotId } = ws;
-      console.log(`🤖 Robot ${robotId} connected`);
-      const existing = robotStates.get(robotId) || {};
-      robotStates.set(robotId, { ...existing, robotId, status: 'online', lastSeen: new Date().toISOString() });
-      ws.publish(DASHBOARD_TOPIC, JSON.stringify({ type: 'robot_connected', robotId }));
-    },
 
-    message: async (ws, message) => {
-      try {
-        const data = JSON.parse(Buffer.from(message).toString());
-        const { robotId } = ws;
-
-        if (!validateRobotData(data)) {
-          console.warn(`⚠️  Invalid data from robot ${robotId}:`, data);
-          return;
-        }
-
-        // Persist to MongoDB
-        await RobotTelemetry.create({
-          robotId,
-          batteryPercentage: data.batteryPercentage,
-          wifiSignalStrength: data.wifiSignalStrength,
-          isCharging: data.isCharging,
-          temperature: data.temperature,
-          memoryUsage: data.memoryUsage,
-          timestamp: new Date(data.timestamp),
-        });
-
-        // Update in-memory state
-        const state = { robotId, ...data, status: 'online', lastSeen: data.timestamp };
-        robotStates.set(robotId, state);
-
-        // Broadcast to all dashboard clients
-        ws.publish(DASHBOARD_TOPIC, JSON.stringify({ type: 'robot_update', robotId, data: state }));
-      } catch (error) {
-        console.error('❌ Error processing robot message:', error);
+      if (!validateRobotData(data)) {
+        console.warn(`⚠️  Invalid data from robot ${robotId}:`, data);
+        return;
       }
-    },
 
-    close: (ws) => {
-      const { robotId } = ws;
-      console.log(`🔌 Robot ${robotId} disconnected`);
-      const existing = robotStates.get(robotId) || {};
-      const state = { ...existing, robotId, status: 'offline', lastSeen: new Date().toISOString() };
+      // Live path first: memory + pub/sub (do not wait on Mongo)
+      const state = { robotId, ...data, status: 'online', lastSeen: data.timestamp };
       robotStates.set(robotId, state);
-      ws.publish(DASHBOARD_TOPIC, JSON.stringify({ type: 'robot_disconnected', robotId, data: state }));
-    },
-  })
+      broadcast('robot_update', { robotId, data: state });
 
-  // ── Dashboard client connections ─────────────────────────────────────────
-  .ws('/dashboard', {
-    open: (ws) => {
-      console.log('📊 Dashboard client connected');
-      ws.subscribe(DASHBOARD_TOPIC);
+      // Persist in background; failures must not block dashboard updates
+      RobotTelemetry.create({
+        robotId,
+        batteryPercentage: data.batteryPercentage,
+        wifiSignalStrength: data.wifiSignalStrength,
+        isCharging: data.isCharging,
+        temperature: data.temperature,
+        memoryUsage: data.memoryUsage,
+        timestamp: new Date(data.timestamp),
+      }).catch((error) => {
+        console.error(`❌ Error persisting telemetry for ${robotId}:`, error);
+      });
+    } catch (error) {
+      console.error('❌ Error processing robot message:', error);
+    }
+  },
 
-      // Send current state of all known robots on connect
-      const robots = Object.fromEntries(robotStates);
-      ws.send(JSON.stringify({ type: 'initial_robots', robots }));
-    },
+  close: (ws) => {
+    const { robotId } = ws;
+    console.log(`🔌 Robot ${robotId} disconnected`);
+    const existing = robotStates.get(robotId) || {};
+    const state = { ...existing, robotId, status: 'offline', lastSeen: new Date().toISOString() };
+    robotStates.set(robotId, state);
+    broadcast('robot_disconnected', { robotId, data: state });
+  },
+});
 
-    message: (ws, message) => {
-      try {
-        const data = JSON.parse(Buffer.from(message).toString());
-        console.log('Dashboard message:', data);
-      } catch (error) {
-        console.error('Error processing dashboard message:', error);
+// ── Dashboard client connections ─────────────────────────────────────────
+app.ws('/dashboard', {
+  open: (ws) => {
+    console.log('📊 Dashboard client connected');
+    ws.subscribe(DASHBOARD_TOPIC);
+
+    // Send current state of all known robots on connect
+    const robots = Object.fromEntries(robotStates);
+    ws.send(JSON.stringify({ type: 'initial_robots', robots }));
+  },
+
+  message: (ws, message) => {
+    try {
+      const data = JSON.parse(Buffer.from(message).toString());
+      console.log('Dashboard message:', data);
+    } catch (error) {
+      console.error('Error processing dashboard message:', error);
+    }
+  },
+
+  close: () => {
+    console.log('📊 Dashboard client disconnected');
+  },
+});
+
+// ── CORS preflight ───────────────────────────────────────────────────────
+app.options('/*', (res) => {
+  res.cork(() => {
+    res.writeHeader('Access-Control-Allow-Origin', '*')
+      .writeHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+      .writeHeader('Access-Control-Allow-Headers', 'Content-Type')
+      .end();
+  });
+});
+
+// ── GET /api/robots — current state of all robots ────────────────────────
+app.get('/api/robots', (res) => {
+  let aborted = false;
+  res.onAborted(() => { aborted = true; });
+  const robots = Array.from(robotStates.values());
+  if (!aborted) sendJson(res, '200 OK', robots);
+});
+
+// ── GET /api/robots/:robotId/history — historical telemetry ─────────────
+app.get('/api/robots/*', (res, req) => {
+  let aborted = false;
+  res.onAborted(() => { aborted = true; });
+
+  const url = req.getUrl();
+  const query = req.getQuery();
+
+  (async () => {
+    try {
+      // url: /api/robots/00001/history
+      const parts = url.split('/').filter(Boolean);
+      const robotId = parts[2];
+      const endpoint = parts[3];
+
+      if (!robotId || endpoint !== 'history') {
+        if (!aborted) sendJson(res, '404 Not Found', { error: 'Not found' });
+        return;
       }
-    },
 
-    close: () => {
-      console.log('📊 Dashboard client disconnected');
-    },
-  })
+      const params = qs.parse(query);
+      const hours = Math.min(parseInt(params.hours) || 6, 24);
+      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
 
-  // ── CORS preflight ───────────────────────────────────────────────────────
-  .options('/*', (res) => {
-    res.cork(() => {
-      res.writeHeader('Access-Control-Allow-Origin', '*')
-        .writeHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        .writeHeader('Access-Control-Allow-Headers', 'Content-Type')
-        .end();
-    });
-  })
+      const data = await RobotTelemetry
+        .find({ robotId, timestamp: { $gte: since } }, { _id: 0, __v: 0 })
+        .sort({ timestamp: 1 })
+        .lean();
 
-  // ── GET /api/robots — current state of all robots ────────────────────────
-  .get('/api/robots', (res) => {
-    let aborted = false;
-    res.onAborted(() => { aborted = true; });
-    const robots = Array.from(robotStates.values());
-    if (!aborted) sendJson(res, '200 OK', robots);
-  })
+      if (!aborted) sendJson(res, '200 OK', data);
+    } catch (err) {
+      console.error('❌ Error fetching history:', err);
+      if (!aborted) sendJson(res, '500 Internal Server Error', { error: 'Internal server error' });
+    }
+  })();
+});
 
-  // ── GET /api/robots/:robotId/history — historical telemetry ─────────────
-  .get('/api/robots/*', (res, req) => {
-    let aborted = false;
-    res.onAborted(() => { aborted = true; });
+// ── POST /api/logs — persist frontend log batches ─────────────────────────
+app.post('/api/logs', (res) => {
+  let aborted = false;
+  let body = '';
 
-    const url = req.getUrl();
-    const query = req.getQuery();
+  res.onAborted(() => { aborted = true; });
+
+  res.onData((chunk, isLast) => {
+    body += Buffer.from(chunk).toString();
+
+    if (!isLast) return;
+    if (aborted) return;
 
     (async () => {
       try {
-        // url: /api/robots/00001/history
-        const parts = url.split('/').filter(Boolean);
-        const robotId = parts[2];
-        const endpoint = parts[3];
+        const payload = JSON.parse(body);
+        const { connectionId, startedAt, entries } = payload;
 
-        if (!robotId || endpoint !== 'history') {
-          if (!aborted) sendJson(res, '404 Not Found', { error: 'Not found' });
+        if (!connectionId || typeof startedAt !== 'number' || !Array.isArray(entries)) {
+          if (!aborted) sendJson(res, '400 Bad Request', { error: 'Invalid payload' });
           return;
         }
 
-        const params = qs.parse(query);
-        const hours = Math.min(parseInt(params.hours) || 6, 24);
-        const since = new Date(Date.now() - hours * 60 * 60 * 1000);
-
-        const data = await RobotTelemetry
-          .find({ robotId, timestamp: { $gte: since } }, { _id: 0, __v: 0 })
-          .sort({ timestamp: 1 })
-          .lean();
-
-        if (!aborted) sendJson(res, '200 OK', data);
+        await Log.create({ connectionId, startedAt, entries });
+        if (!aborted) sendJson(res, '200 OK', { ok: true });
       } catch (err) {
-        console.error('❌ Error fetching history:', err);
+        console.error('❌ Error storing logs:', err);
         if (!aborted) sendJson(res, '500 Internal Server Error', { error: 'Internal server error' });
       }
     })();
-  })
-
-  // ── POST /api/logs — persist frontend log batches ─────────────────────────
-  .post('/api/logs', (res) => {
-    let aborted = false;
-    let body = '';
-
-    res.onAborted(() => { aborted = true; });
-
-    res.onData((chunk, isLast) => {
-      body += Buffer.from(chunk).toString();
-
-      if (!isLast) return;
-      if (aborted) return;
-
-      (async () => {
-        try {
-          const payload = JSON.parse(body);
-          const { connectionId, startedAt, entries } = payload;
-
-          if (!connectionId || typeof startedAt !== 'number' || !Array.isArray(entries)) {
-            if (!aborted) sendJson(res, '400 Bad Request', { error: 'Invalid payload' });
-            return;
-          }
-
-          await Log.create({ connectionId, startedAt, entries });
-          if (!aborted) sendJson(res, '200 OK', { ok: true });
-        } catch (err) {
-          console.error('❌ Error storing logs:', err);
-          if (!aborted) sendJson(res, '500 Internal Server Error', { error: 'Internal server error' });
-        }
-      })();
-    });
-  })
-
-  .listen(PORT, (token) => {
-    if (token) {
-      console.log(`🚀 Robot Fleet Server listening on port ${PORT}`);
-    } else {
-      console.log('❌ Failed to listen on port', PORT);
-      process.exit(1);
-    }
   });
+});
+
+app.listen(PORT, (token) => {
+  if (token) {
+    console.log(`🚀 Robot Fleet Server listening on port ${PORT}`);
+  } else {
+    console.log('❌ Failed to listen on port', PORT);
+    process.exit(1);
+  }
+});
 
 connectDB().catch(console.error);
 

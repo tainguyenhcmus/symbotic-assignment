@@ -17,9 +17,10 @@ class RobotSimulator {
       memoryUsage: Math.floor(Math.random() * 60) + 20 // 20-80%
     };
 
-    // Simulation parameters
-    this.batteryDrainRate = 0.1; // Battery drains by 0.1% per second when not charging
-    this.chargingRate = 0.5; // Battery charges by 0.5% per second when charging
+    // Simulation parameters (scaled for 3s tick ≈ same wall-clock drain as 1s @ 0.1/0.5)
+    this.tickMs = 3000;
+    this.batteryDrainRate = 0.3; // ~0.1%/s when not charging
+    this.chargingRate = 1.5; // ~0.5%/s when charging
 
     console.log(`🤖 Robot ${this.robotId} initialized with state:`, this.state);
   }
@@ -72,13 +73,13 @@ class RobotSimulator {
       clearInterval(this.dataInterval);
     }
 
-    // Send data every 1 second
+    // Send data every 3 seconds
     this.dataInterval = setInterval(() => {
       if (this.isConnected && this.ws.readyState === WebSocket.OPEN) {
         this.updateState();
         this.sendData();
       }
-    }, 1000);
+    }, this.tickMs);
   }
 
   stopSendingData() {
@@ -180,7 +181,7 @@ function shutdownFleet(robots) {
 if (require.main === module) {
   console.log('🚀 Starting Robot Fleet Simulator...');
   console.log('📡 Connecting to server at ws://localhost:8080');
-  console.log('⏱️  Robots will send data every 1 second');
+  console.log('⏱️  Robots will send data every 3 seconds');
   console.log('Press Ctrl+C to stop\n');
 
   const robots = createRobotFleet(5); // Create 5 robots by default
