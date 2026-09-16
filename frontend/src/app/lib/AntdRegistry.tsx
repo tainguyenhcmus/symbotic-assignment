@@ -1,8 +1,9 @@
 'use client'
 
-import React from 'react'
+import '@ant-design/v5-patch-for-react-19'
+import type { ReactNode } from 'react'
 
-const AntdRegistry = ({ children }: { children: React.ReactNode }) => {
+const AntdRegistry = ({ children }: { children: ReactNode }) => {
   return <div className="antd-registry">{children}</div>
 }
 

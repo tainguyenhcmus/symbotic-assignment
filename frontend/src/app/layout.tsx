@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import { ConfigProvider } from 'antd'
+import { App, ConfigProvider } from 'antd'
 import AntdRegistry from './lib/AntdRegistry'
 import LogProvider from '../components/LogProvider'
 import './globals.css'
@@ -25,9 +25,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               },
             }}
           >
-            <LogProvider>
-              {children}
-            </LogProvider>
+            <App>
+              <LogProvider>
+                {children}
+              </LogProvider>
+            </App>
           </ConfigProvider>
         </AntdRegistry>
       </body>

@@ -12,13 +12,14 @@ import {
 } from '../utils/robotMetrics'
 import RobotCard, { GridSkeleton } from '../components/dashboard/RobotCard'
 import StatusFilterBar from '../components/dashboard/StatusFilterBar'
+import MockAlertButton from '../components/dashboard/MockAlertButton'
 
 const { Header, Content } = Layout
 const { Title, Text } = Typography
 
 export default function Dashboard() {
   const router = useRouter()
-  const { isConnected, robots } = useRobotFleet()
+  const { isConnected, robots, mockLowBattery, mockCriticalBattery, clearMockRobot } = useRobotFleet()
   const [initialLoading, setInitialLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [wsUpdateCount, setWsUpdateCount] = useState(0)
@@ -121,6 +122,12 @@ export default function Dashboard() {
           <LogController>{wsUpdateCount}</LogController>
           <LogController>{rowClickCount}</LogController>
         </div>
+
+        <MockAlertButton
+          onMockLow={mockLowBattery}
+          onMockCritical={mockCriticalBattery}
+          onClear={clearMockRobot}
+        />
       </Content>
     </Layout>
   )
